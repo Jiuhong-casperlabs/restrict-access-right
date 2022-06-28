@@ -11,12 +11,11 @@ extern crate alloc;
 use alloc::{collections::BTreeMap, string::String, vec};
 
 use casper_contract::{
-    contract_api::{account, runtime, storage, system},
+    contract_api::{runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    runtime_args, ApiError, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, Parameter, RuntimeArgs, URef, U512,
+    CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
 };
 
 #[no_mangle]
