@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use assert_matches::assert_matches;
     use std::path::PathBuf;
 
     use casper_engine_test_support::{
@@ -7,111 +8,78 @@ mod tests {
         DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_GENESIS_CONFIG,
         DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT, DEFAULT_RUN_GENESIS_REQUEST,
     };
-    use casper_execution_engine::core::engine_state::{
-        run_genesis_request::RunGenesisRequest, GenesisAccount,
-    };
+    use casper_execution_engine::core::{engine_state::{
+        run_genesis_request::RunGenesisRequest, GenesisAccount,  Error as CoreError,
+       
+    }, execution::Error as ExecError};
     use casper_types::{
-        account::AccountHash, runtime_args, Key, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
+        account::AccountHash, runtime_args, Key, Motes, PublicKey, RuntimeArgs, SecretKey, U512, ContractHash, system::mint, ApiError,
     };
 
-    const MY_ACCOUNT: [u8; 32] = [7u8; 32];
-    // Define `KEY` constant to match that in the contract.
-    const KEY: &str = "my-key-name";
-    const VALUE: &str = "hello world";
-    const RUNTIME_ARG_NAME: &str = "message";
     const CONTRACT_WASM: &str = "contract.wasm";
+    const GOOD_WASM: &str = "good.wasm";
+    const BAD_WASM: &str = "bad.wasm";
+
 
     #[test]
-    fn should_store_hello_world() {
-        // Create keypair.
-        let secret_key = SecretKey::ed25519_from_bytes(MY_ACCOUNT).unwrap();
-        let public_key = PublicKey::from(&secret_key);
-
-        // Create an AccountHash from a public key.
-        let account_addr = AccountHash::from(&public_key);
-        // Create a GenesisAccount.
-        let account = GenesisAccount::account(
-            public_key,
-            Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE)),
-            None,
-        );
-
-        let mut genesis_config = DEFAULT_GENESIS_CONFIG.clone();
-        genesis_config.ee_config_mut().push_account(account);
-
-        let run_genesis_request = RunGenesisRequest::new(
-            *DEFAULT_GENESIS_CONFIG_HASH,
-            genesis_config.protocol_version(),
-            genesis_config.take_ee_config(),
-        );
-        // The test framework checks for compiled Wasm files in '<current working dir>/wasm'.  Paths
-        // relative to the current working dir (e.g. 'wasm/contract.wasm') can also be used, as can
-        // absolute paths.
-        let session_code = PathBuf::from(CONTRACT_WASM);
-        let session_args = runtime_args! {
-            RUNTIME_ARG_NAME => VALUE,
-        };
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_empty_payment_bytes(runtime_args! {
-                ARG_AMOUNT => *DEFAULT_PAYMENT
-            })
-            .with_session_code(session_code, session_args)
-            .with_authorization_keys(&[account_addr])
-            .with_address(account_addr)
-            .build();
-
-        let execute_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
-
+    fn good() {
         let mut builder = InMemoryWasmTestBuilder::default();
-        builder.run_genesis(&run_genesis_request).commit();
 
-        // prepare assertions.
-        let result_of_query = builder.query(
-            None,
-            Key::Account(*DEFAULT_ACCOUNT_ADDR),
-            &[KEY.to_string()],
-        );
-        assert!(result_of_query.is_err());
+        let exec_request_1 = ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT_WASM, runtime_args! {}).build();
 
-        // deploy the contract.
-        builder.exec(execute_request).commit().expect_success();
+        builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).exec(exec_request_1).expect_success().commit();
+        let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).expect("should have account");
 
-        // make assertions
-        let result_of_query = builder
-            .query(None, Key::Account(account_addr), &[KEY.to_string()])
-            .expect("should be stored value.")
-            .as_cl_value()
-            .expect("should be cl value.")
-            .clone()
-            .into_t::<String>()
-            .expect("should be string.");
+        let contract_hash = account
+            .named_keys()
+            .get("contract1")
+            .expect("should have contract1")
+            .into_hash()
+            .map(ContractHash::new)
+            .expect("should be contracthash");
 
-        assert_eq!(result_of_query, VALUE);
+        let exec_request_2 = ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR,GOOD_WASM,runtime_args! {
+            "amount" => U512::from(100000u64),
+            "marketplace_contract" => contract_hash,
+        }).build();
+
+        builder.exec(exec_request_2).expect_success().commit();
     }
-
+ 
     #[test]
-    fn should_error_on_missing_runtime_arg() {
-        let secret_key = SecretKey::ed25519_from_bytes(MY_ACCOUNT).unwrap();
-        let public_key = PublicKey::from(&secret_key);
-        let account_addr = AccountHash::from(&public_key);
-
-        let session_code = PathBuf::from(CONTRACT_WASM);
-        let session_args = RuntimeArgs::new();
-
-        let deploy_item = DeployItemBuilder::new()
-            .with_empty_payment_bytes(runtime_args! {ARG_AMOUNT => *DEFAULT_PAYMENT})
-            .with_authorization_keys(&[account_addr])
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_session_code(session_code, session_args)
-            .build();
-
-        let execute_request = ExecuteRequestBuilder::from_deploy_item(deploy_item).build();
-
+    fn bad() {
         let mut builder = InMemoryWasmTestBuilder::default();
-        builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).commit();
-        builder.exec(execute_request).commit().expect_failure();
+
+        let exec_request_1 = ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT_WASM, runtime_args! {}).build();
+
+        builder.run_genesis(&DEFAULT_RUN_GENESIS_REQUEST).exec(exec_request_1).expect_success().commit();
+        let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).expect("should have account");
+
+        let contract_hash = account
+            .named_keys()
+            .get("contract1")
+            .expect("should have contract1")
+            .into_hash()
+            .map(ContractHash::new)
+            .expect("should be contracthash");
+
+        let exec_request_2 = ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR,BAD_WASM,runtime_args! {
+            "amount" => U512::from(100000u64),
+            "marketplace_contract" => contract_hash,
+        }).build();
+
+    builder.exec(exec_request_2);
+
+    let error = builder.get_error().expect("should have returned an error");
+
+    assert!(
+        matches!(error, CoreError::Exec(ExecError::Revert(ApiError::Mint(
+            auction_error,
+        ))) if auction_error == mint::Error::InvalidAccessRights as u8)
+    );
+
     }
+ 
 }
 
 fn main() {
