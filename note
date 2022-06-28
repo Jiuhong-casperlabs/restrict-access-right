@@ -1,0 +1,18 @@
+casper-client put-deploy \
+--chain-name casper-test \
+--node-address http://16.162.124.124:7777 \
+--payment-amount 15000000000 \
+--session-path /home/jh/rust/test62/contract/target/wasm32-unknown-unknown/release/contract1.wasm \
+--secret-key /home/jh/keys/test1/secret_key.pem 
+
+=>
+"hash-feb81939e3f97563c962437e654f9f12cadc01ddcd0d5357c1f5cc8eedbe6fd1"
+=============
+casper-client put-deploy \
+--chain-name casper-test \
+--node-address http://16.162.124.124:7777 \
+--payment-amount 5000000000 \
+--session-path /home/jh/rust/test62/contract/target/wasm32-unknown-unknown/release/contract2.wasm \
+--session-arg "amount:U512='1000000000'" \
+--session-arg "marketplace_contract:account_hash='account-hash-feb81939e3f97563c962437e654f9f12cadc01ddcd0d5357c1f5cc8eedbe6fd1'" \
+--secret-key /home/jh/keys/test2/secret_key.pem 
