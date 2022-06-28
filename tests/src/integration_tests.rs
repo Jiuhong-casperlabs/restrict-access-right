@@ -1,7 +1,5 @@
 #[cfg(test)]
 mod tests {
-    use assert_matches::assert_matches;
-    use std::path::PathBuf;
 
     use casper_engine_test_support::{
         DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
